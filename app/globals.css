@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #080b12;
+  --red: #FF6B6B;
+  --teal: #4ECDC4;
+  --yellow: #FFE66D;
+  --green: #A8E6CF;
+  --purple: #DDA0DD;
+}
+
+body {
+  background: var(--bg);
+  color: #e8e8e8;
+}
+
+input[type=range] { accent-color: var(--red); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+* { -webkit-tap-highlight-color: transparent; }
