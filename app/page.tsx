@@ -16,6 +16,8 @@ import SubscriptionsTab   from "./components/SubscriptionsTab";
 import GoalsTab          from "./components/GoalsTab";
 import { Modal, Btn } from "./components/ui";
 
+const APP_PIN = process.env.NEXT_PUBLIC_APP_PIN ?? "asset2024";
+
 const TABS = [
   { id: "dashboard",   label: "ダッシュボード", icon: "📊" },
   { id: "monthly",       label: "月次収支",       icon: "📅" },
@@ -92,10 +94,21 @@ async function exportPdf(elementId: string, filename: string) {
 
 export default function Page() {
   const [tab, setTab]           = useState("dashboard");
+  const [authed, setAuthed]     = useState<boolean | null>(null);
+  const [pin, setPin]           = useState("");
+  const [pinError, setPinError] = useState("");
   const [state, setState]       = useState<AppState | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [saved, setSaved]       = useState(false);
   const [showExport, setShowExport] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem("asset-journey-auth") === "1") {
+      setAuthed(true);
+    } else {
+      setAuthed(false);
+    }
+  }, []);
 
   useEffect(() => { setState(loadState()); }, []);
 
@@ -111,6 +124,78 @@ export default function Page() {
     (fn: (prev: AppState[K]) => AppState[K]) => {
       setState(prev => { if (!prev) return prev; return { ...prev, [key]: fn(prev[key]) }; });
     }, []);
+
+  const handlePinSubmit = () => {
+    if (pin === APP_PIN) {
+      sessionStorage.setItem("asset-journey-auth", "1");
+      setAuthed(true);
+      setPinError("");
+    } else {
+      setPinError("パスワードが違います");
+      setPin("");
+    }
+  };
+
+  if (authed === null) return null;
+  if (!authed) {
+    return (
+      <div style={{
+        minHeight: "100vh", background: "#080b12",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}>
+        <div style={{
+          background: "#0e1118",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 16, padding: 40,
+          maxWidth: 380, width: "100%",
+          textAlign: "center",
+        }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 12,
+            background: "linear-gradient(135deg,#FF6B6B,#FFE66D)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, margin: "0 auto 16px",
+          }}>💹</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'Noto Serif JP', serif", marginBottom: 6 }}>
+            Asset Journey
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 28 }}>家族の資産ダッシュボード</div>
+          <input
+            type="password"
+            value={pin}
+            onChange={e => { setPin(e.target.value); setPinError(""); }}
+            onKeyDown={e => e.key === "Enter" && handlePinSubmit()}
+            placeholder="パスワードを入力"
+            autoFocus
+            style={{
+              width: "100%", padding: "12px 14px",
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${pinError ? "#FF6B6B" : "rgba(255,255,255,0.1)"}`,
+              borderRadius: 8, color: "#fff", fontSize: 14,
+              boxSizing: "border-box", outline: "none",
+              fontFamily: "monospace", marginBottom: 12,
+            }}
+          />
+          {pinError && (
+            <div style={{ fontSize: 12, color: "#FF6B6B", marginBottom: 12 }}>{pinError}</div>
+          )}
+          <button
+            onClick={handlePinSubmit}
+            style={{
+              width: "100%", padding: "12px",
+              background: "#FF6B6B", border: "none",
+              borderRadius: 8, color: "#fff",
+              fontWeight: 700, fontSize: 14,
+              cursor: "pointer", fontFamily: "'Noto Sans JP', sans-serif",
+            }}
+          >
+            ログイン
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!state) {
     return (
