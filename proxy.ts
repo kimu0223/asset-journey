@@ -5,8 +5,10 @@ export function proxy(request: NextRequest) {
   const password = process.env.APP_PASSWORD ?? "asset2024";
 
   if (authHeader?.startsWith("Basic ")) {
-    const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
-    const [, pwd] = decoded.split(":");
+    // Edge Runtime では Buffer 非対応のため atob() を使用
+    const decoded = atob(authHeader.slice(6));
+    const colonIdx = decoded.indexOf(":");
+    const pwd = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : "";
     if (pwd === password) return NextResponse.next();
   }
 
