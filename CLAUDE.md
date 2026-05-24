@@ -122,8 +122,82 @@ npx vercel --prod
 
 ## 今後の拡張アイデア（優先度順）
 
-1. **Supabase連携** — 複数デバイス間でデータ同期（現状はlocalStorageのみ）
-2. **ライフイベントタイムライン** — 子供入学・車購入等をビジュアル表示
-3. **NISA枠残高管理** — 年間投資枠（成長投資枠・積立枠）のトラッキング
-4. **資産目標設定** — 「60歳までに1億円」などのゴール設定と達成予測
-5. **CSV/JSONエクスポート** — データのバックアップ機能
+| # | 機能 | 状態 | 概要 |
+|---|------|------|------|
+| 1 | **Supabase連携** | 未実装 | 複数デバイス間でデータ同期 |
+| 2 | **ライフイベントタイムライン** | 未実装 | 子供入学・車購入等をビジュアル表示 |
+| 3 | **NISA枠残高管理** | 未実装 | 年間投資枠（成長投資枠・積立枠）のトラッキング |
+| 4 | **資産目標設定** | 未実装 | 「60歳までに1億円」などのゴール設定と達成予測 |
+| 5 | **CSV/JSONエクスポート** | 未実装 | データのバックアップ機能 |
+
+---
+
+## クイックコマンド
+
+```bash
+npm run dev          # 開発サーバー起動 (http://localhost:3000)
+npm run build        # 本番ビルド確認
+npx tsc --noEmit     # 型チェックのみ
+npx vercel --prod    # Vercelへ本番デプロイ
+```
+
+---
+
+## コンポーネントパターン
+
+### UIプリミティブ（app/components/ui.tsx）
+
+```tsx
+// Modal — フォームダイアログ
+<Modal title="タイトル" onClose={() => setShowModal(false)}>
+  <Field label="ラベル" value={val} onChange={v => setVal(v)} />
+  <Field label="金額" value={num} onChange={v => setNum(v)} type="number" prefix="¥" />
+  <Select label="区分" value={sel} onChange={v => setSel(v)} options={[...]} />
+  <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:20 }}>
+    <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+    <Btn onClick={save}>保存</Btn>
+  </div>
+</Modal>
+
+// Card — コンテンツブロック
+<Card>内容</Card>
+<Card style={{ padding:0 }}>// テーブルなど padding なし</Card>
+
+// SectionHeader — タブ見出し
+<SectionHeader title="セクション名" sub="サブテキスト" />
+
+// Btn variants
+<Btn onClick={...}>通常（赤）</Btn>
+<Btn variant="ghost" onClick={...}>ゴースト（薄灰）</Btn>
+<Btn variant="danger" onClick={...}>危険（薄赤）</Btn>
+```
+
+### モバイル対応パターン
+
+```tsx
+// グリッドのレスポンシブ（JSX内styleタグ方式）
+<div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14 }} className="my-grid">
+  <style>{`@media(max-width:640px){.my-grid{grid-template-columns:1fr!important;}}`}</style>
+  ...
+</div>
+```
+
+---
+
+## 新タブ追加チェックリスト
+
+1. `app/components/NewTab.tsx` を作成（先頭に `"use client";`）
+2. `app/lib/data.ts` に型・初期データ・AppStateキーを追加
+3. `app/page.tsx` の `TABS` 配列にエントリ追加
+4. `page.tsx` の `main` 内に `{tab==="newtab" && <NewTab ... />}` 追加
+5. `update()` 関数経由で状態更新（イミュータブルパターン維持）
+
+---
+
+## Claude Code設定（.claude/settings.json）
+
+- `npm run dev/build/start/lint` — 自動許可
+- `npx tsc --noEmit` — 型チェック自動許可
+- `npx vercel --prod` — デプロイ自動許可
+- `git status/diff/add/commit` — 自動許可
+- ファイル編集後にTypeScript型チェックを自動実行（hooks）

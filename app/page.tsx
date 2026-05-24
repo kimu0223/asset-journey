@@ -2,29 +2,100 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AppState, loadState, saveState,
-  MonthlyRecord, YearlyRecord, SbiAccount, StockHolding,
+  MonthlyRecord, YearlyRecord, SbiAccount, StockHolding, NisaRecord, LifeEvent, MemberConfig, Subscription, AssetGoal,
 } from "./lib/data";
 import DashboardTab   from "./components/DashboardTab";
 import MonthlyTab     from "./components/MonthlyTab";
 import YearlyTab      from "./components/YearlyTab";
 import AccountsTab    from "./components/AccountsTab";
 import StocksTab      from "./components/StocksTab";
-import RealEstateTab  from "./components/RealEstateTab";
+import NisaTab        from "./components/NisaTab";
+import LifeEventsTab      from "./components/LifeEventsTab";
+import RealEstateTab      from "./components/RealEstateTab";
+import SubscriptionsTab   from "./components/SubscriptionsTab";
+import GoalsTab          from "./components/GoalsTab";
+import { Modal, Btn } from "./components/ui";
 
 const TABS = [
   { id: "dashboard",   label: "ダッシュボード", icon: "📊" },
-  { id: "monthly",     label: "月次収支",       icon: "📅" },
-  { id: "yearly",      label: "年次資産",       icon: "📈" },
+  { id: "monthly",       label: "月次収支",       icon: "📅" },
+  { id: "subscriptions", label: "サブスク管理",   icon: "💳" },
+  { id: "yearly",        label: "年次資産",       icon: "📈" },
+  { id: "goals",         label: "資産目標",       icon: "🎯" },
   { id: "accounts",    label: "目的別口座",     icon: "🏦" },
   { id: "stocks",      label: "保有証券",       icon: "💹" },
+  { id: "nisa",        label: "NISA枠管理",     icon: "💰" },
+  { id: "events",      label: "ライフイベント", icon: "🗓️" },
   { id: "realestate",  label: "不動産シミュ",   icon: "🏠" },
 ];
 
+function exportState(state: AppState) {
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `asset-journey-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportMonthlyCsv(state: AppState) {
+  const rows = ["月,収入,支出,残高", ...state.monthly.map(r => `${r.month},${r.income},${r.expense},${r.balance}`)];
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `monthly-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportYearlyCsv(state: AppState) {
+  const rows = ["年,現金,NISA,高配当株,投資信託,NISA含み益,株含み益", ...state.yearly.map(r => `${r.year},${r.cash},${r.nisa},${r.stock},${r.trust},${r.nisaGain},${r.stockGain}`)];
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `yearly-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportPdf(elementId: string, filename: string) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const html2canvas = (await import("html2canvas")).default as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { jsPDF } = (await import("jspdf")) as any;
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: "#080b12",
+    logging: false,
+  });
+  const imgData = canvas.toDataURL("image/png");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgW = pageW;
+  const imgH = (canvas.height * imgW) / canvas.width;
+  let y = 0;
+  while (y < imgH) {
+    if (y > 0) pdf.addPage();
+    pdf.addImage(imgData, "PNG", 0, -y, imgW, imgH);
+    y += pageH;
+  }
+  pdf.save(filename);
+}
+
 export default function Page() {
-  const [tab, setTab]       = useState("dashboard");
-  const [state, setState]   = useState<AppState | null>(null);
+  const [tab, setTab]           = useState("dashboard");
+  const [state, setState]       = useState<AppState | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [saved, setSaved]   = useState(false);
+  const [saved, setSaved]       = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => { setState(loadState()); }, []);
 
@@ -75,6 +146,17 @@ export default function Page() {
           </div>
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+          <button
+            onClick={() => setShowExport(true)}
+            style={{
+              background:"rgba(78,205,196,0.12)", border:"1px solid rgba(78,205,196,0.3)",
+              color:"#4ECDC4", fontSize:11, fontWeight:600, borderRadius:6,
+              padding:"5px 10px", cursor:"pointer", letterSpacing:"0.03em",
+              fontFamily:"'Noto Sans JP',sans-serif", whiteSpace:"nowrap",
+            }}
+          >
+            ⬇ エクスポート
+          </button>
           <div style={{ fontSize:10,color:saved?"#4ECDC4":"#555",fontFamily:"monospace",transition:"color 0.3s" }}>
             {saved ? "✓ 保存" : "自動保存"}
           </div>
@@ -122,23 +204,27 @@ export default function Page() {
         </div>
       )}
 
-      <main style={{ padding:"24px 20px",maxWidth:1100,margin:"0 auto" }}>
+      <main id="pdf-main" style={{ padding:"24px 20px",maxWidth:1100,margin:"0 auto" }}>
         <div className="mobile-breadcrumb" style={{ marginBottom:20,fontSize:12,color:"#666" }}>
           {activeTab.icon} {activeTab.label}
         </div>
 
-        {tab==="dashboard"  && <DashboardTab  monthly={state.monthly} yearly={state.yearly} accounts={state.accounts} stocks={state.stocks} />}
-        {tab==="monthly"    && <MonthlyTab    monthly={state.monthly}  setMonthly={update("monthly") as (fn:(prev:MonthlyRecord[])=>MonthlyRecord[])=>void} />}
+        {tab==="dashboard"  && <DashboardTab  monthly={state.monthly} yearly={state.yearly} accounts={state.accounts} stocks={state.stocks} members={state.members} />}
+        {tab==="monthly"        && <MonthlyTab       monthly={state.monthly}          setMonthly={update("monthly") as (fn:(prev:MonthlyRecord[])=>MonthlyRecord[])=>void} />}
+        {tab==="subscriptions"  && <SubscriptionsTab subscriptions={state.subscriptions} setSubscriptions={update("subscriptions") as (fn:(prev:Subscription[])=>Subscription[])=>void} />}
         {tab==="yearly"     && <YearlyTab     yearly={state.yearly}    setYearly={update("yearly") as (fn:(prev:YearlyRecord[])=>YearlyRecord[])=>void} />}
         {tab==="accounts"   && <AccountsTab   accounts={state.accounts} setAccounts={update("accounts") as (fn:(prev:SbiAccount[])=>SbiAccount[])=>void} />}
         {tab==="stocks"     && <StocksTab     stocks={state.stocks}    setStocks={update("stocks") as (fn:(prev:StockHolding[])=>StockHolding[])=>void} />}
+        {tab==="nisa"       && <NisaTab       nisa={state.nisa}        setNisa={update("nisa") as (fn:(prev:NisaRecord[])=>NisaRecord[])=>void} />}
+        {tab==="events"     && <LifeEventsTab events={state.events}   setEvents={update("events") as (fn:(prev:LifeEvent[])=>LifeEvent[])=>void} />}
         {tab==="realestate" && <RealEstateTab yearly={state.yearly} />}
+        {tab==="goals"      && <GoalsTab goals={state.goals} setGoals={update("goals") as (fn:(prev:AssetGoal[])=>AssetGoal[])=>void} />}
       </main>
 
-      <nav className="bottom-nav">
+      <nav className="bottom-nav" style={{ overflowX:"auto" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setMenuOpen(false); }} style={{
-            flex:1, border:"none", background:"none",
+            flex:"none", minWidth:60, border:"none", background:"none",
             color:tab===t.id?"#FF6B6B":"#555",
             padding:"8px 2px 6px", cursor:"pointer",
             display:"flex", flexDirection:"column", alignItems:"center", gap:3,
@@ -150,6 +236,48 @@ export default function Page() {
           </button>
         ))}
       </nav>
+
+      {showExport && state && (
+        <Modal title="⬇ データエクスポート" onClose={() => setShowExport(false)}>
+          <p style={{ fontSize:12,color:"#888",margin:"0 0 16px",lineHeight:1.6 }}>
+            保存先はブラウザのダウンロードフォルダです。
+          </p>
+          <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+            <Btn
+              variant="ghost"
+              onClick={() => { exportState(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
+            >
+              📋 JSON完全バックアップ
+            </Btn>
+            <Btn
+              variant="ghost"
+              onClick={() => { exportMonthlyCsv(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
+            >
+              📊 月次収支 CSV
+            </Btn>
+            <Btn
+              variant="ghost"
+              onClick={() => { exportYearlyCsv(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
+            >
+              📈 年次資産 CSV
+            </Btn>
+            <Btn
+              variant="ghost"
+              onClick={async () => {
+                setShowExport(false);
+                await new Promise(r => setTimeout(r, 100));
+                await exportPdf("pdf-main", `asset-journey-${new Date().toISOString().slice(0, 10)}.pdf`);
+              }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
+            >
+              📄 PDF ダウンロード（現在の画面）
+            </Btn>
+          </div>
+        </Modal>
+      )}
 
       <style>{`
         .hamburger { display:none; }

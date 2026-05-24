@@ -1,5 +1,5 @@
 "use client";
-import { MonthlyRecord, YearlyRecord, SbiAccount, StockHolding, fmt, fmtFull, CHART_COLORS } from "../lib/data";
+import { MonthlyRecord, YearlyRecord, SbiAccount, StockHolding, MemberConfig, fmt, fmtFull, CHART_COLORS } from "../lib/data";
 import { Card, CustomTooltip } from "./ui";
 import {
   LineChart, Line, PieChart, Pie, Cell,
@@ -11,9 +11,10 @@ interface Props {
   yearly: YearlyRecord[];
   accounts: SbiAccount[];
   stocks: StockHolding[];
+  members: MemberConfig;
 }
 
-export default function DashboardTab({ monthly, yearly, accounts, stocks }: Props) {
+export default function DashboardTab({ monthly, yearly, accounts, stocks, members }: Props) {
   const latest = monthly[monthly.length - 1];
   const latestYear = yearly[yearly.length - 1];
   const prevYear = yearly[yearly.length - 2];
@@ -124,6 +125,81 @@ export default function DashboardTab({ monthly, yearly, accounts, stocks }: Prop
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* 年間サマリー */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14 }} className="summary-grid">
+        <style>{`@media(max-width:640px){.summary-grid{grid-template-columns:1fr!important;}}`}</style>
+        <Card>
+          <div style={{ fontSize: 10, color: "#888", marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>年間預貯金合計（直近年）</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#4ECDC4", fontFamily: "monospace", letterSpacing: "-0.02em" }}>{fmt(latestYear.cash)}</div>
+          <div style={{ fontSize: 11, color: "#666", marginTop: 6 }}>{latestYear.year}年 現金・預金</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 10, color: "#888", marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>年間証券残高合計</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#FFE66D", fontFamily: "monospace", letterSpacing: "-0.02em" }}>{fmt(latestYear.nisa + latestYear.stock + latestYear.trust)}</div>
+          <div style={{ fontSize: 11, color: "#666", marginTop: 6 }}>NISA + 高配当株 + 投資信託</div>
+        </Card>
+      </div>
+
+      {/* 夫婦別資産内訳 */}
+      <Card>
+        <div style={{ fontSize: 13, color: "#aaa", marginBottom: 16, fontWeight: 600 }}>夫婦別 資産内訳</div>
+        {(() => {
+          const selfAccountTotal    = accounts.filter(a => a.owner === "self").reduce((s, a) => s + a.balance, 0);
+          const partnerAccountTotal = accounts.filter(a => a.owner === "partner").reduce((s, a) => s + a.balance, 0);
+          const jointAccountTotal   = accounts.filter(a => a.owner === "joint" || a.owner === undefined).reduce((s, a) => s + a.balance, 0);
+
+          const stockValue = (s: typeof stocks[number]) => (s.currentPrice ?? s.avgCost) * s.shares;
+          const selfStockTotal    = stocks.filter(s => s.owner === "self").reduce((sum, s) => sum + stockValue(s), 0);
+          const partnerStockTotal = stocks.filter(s => s.owner === "partner").reduce((sum, s) => sum + stockValue(s), 0);
+          const jointStockTotal   = stocks.filter(s => s.owner === "joint" || s.owner === undefined).reduce((sum, s) => sum + stockValue(s), 0);
+
+          const selfTotal    = selfAccountTotal + selfStockTotal;
+          const partnerTotal = partnerAccountTotal + partnerStockTotal;
+          const jointTotal   = jointAccountTotal + jointStockTotal;
+          const grandTotal   = selfTotal + partnerTotal + jointTotal;
+
+          if (grandTotal === 0) {
+            return (
+              <div style={{ fontSize: 12, color: "#555", textAlign: "center", padding: "20px 0" }}>
+                各口座・証券に所有者を設定すると表示されます
+              </div>
+            );
+          }
+
+          const rows = [
+            { label: members.selfName,    total: selfTotal,    color: "#4ECDC4" },
+            { label: members.partnerName, total: partnerTotal, color: "#FF6B6B" },
+            { label: "共有",              total: jointTotal,   color: "#FFE66D" },
+          ];
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {rows.map((row, i) => {
+                const pct = grandTotal > 0 ? (row.total / grandTotal) * 100 : 0;
+                return (
+                  <div key={i}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: "#aaa", fontWeight: 600 }}>{row.label}</span>
+                      <span style={{ fontSize: 13, color: row.color, fontFamily: "monospace", fontWeight: 700 }}>{fmt(row.total)}</span>
+                    </div>
+                    <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%",
+                        width: `${pct}%`,
+                        background: row.color,
+                        borderRadius: 4,
+                        transition: "width 0.4s ease",
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>{pct.toFixed(1)}%</div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
     </div>
   );
