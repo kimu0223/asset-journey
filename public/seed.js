@@ -3,7 +3,7 @@
 // 2026年5月24日時点の実データ
 
 const realData = {
-  members: { selfName: "壮汰", partnerName: "パートナー" },
+  members: { selfName: "壮汰", partnerName: "かい" },
 
   monthly: [],
 

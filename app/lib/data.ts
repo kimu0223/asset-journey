@@ -194,7 +194,7 @@ export interface AppState {
   goals: AssetGoal[];
 }
 
-export const DEFAULT_MEMBERS: MemberConfig = { selfName: "壮汰", partnerName: "パートナー" };
+export const DEFAULT_MEMBERS: MemberConfig = { selfName: "壮汰", partnerName: "かい" };
 
 export const loadState = (): AppState => {
   const defaults: AppState = {
