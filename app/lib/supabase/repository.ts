@@ -1,7 +1,8 @@
 import { supabase } from "./client";
 import type {
   MonthlyRecord, YearlyRecord, SbiAccount, StockHolding,
-  NisaRecord, LifeEvent, Subscription, AssetGoal, MemberConfig, AppState
+  NisaRecord, LifeEvent, Subscription, AssetGoal, MemberConfig, AppState,
+  BankAccount
 } from "@/app/lib/data";
 
 // ─── Fetch All ─────────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ export async function fetchAppState(householdId: string): Promise<Partial<AppSta
     { data: subscriptions },
     { data: goals },
     { data: memberRow },
+    { data: bankAccountsData },
   ] = await Promise.all([
     supabase.from("monthly_records").select("*").eq("household_id", householdId).order("year").order("month"),
     supabase.from("yearly_records").select("*").eq("household_id", householdId).order("year"),
@@ -27,6 +29,7 @@ export async function fetchAppState(householdId: string): Promise<Partial<AppSta
     supabase.from("subscriptions").select("*").eq("household_id", householdId),
     supabase.from("asset_goals").select("*").eq("household_id", householdId),
     supabase.from("member_config").select("*").eq("household_id", householdId).single(),
+    supabase.from("bank_accounts").select("*").eq("household_id", householdId).order("sort_order"),
   ]);
 
   return {
@@ -77,6 +80,13 @@ export async function fetchAppState(householdId: string): Promise<Partial<AppSta
     members: memberRow
       ? { selfName: memberRow.self_name, partnerName: memberRow.partner_name }
       : { selfName: "壮汰", partnerName: "かい" },
+
+    bankAccounts: ((bankAccountsData ?? []) as Array<{id: string; name: string; bank: string; balance: number; type: string; owner: string; color: string}>).map(r => ({
+      id: r.id, name: r.name, bank: r.bank, balance: r.balance,
+      type: r.type as "普通" | "定期" | "積立" | "その他",
+      owner: r.owner as "self" | "partner" | "joint",
+      color: r.color,
+    })),
   };
 }
 
@@ -169,6 +179,17 @@ export async function syncGoals(householdId: string, goals: AssetGoal[]) {
   await supabase.from("asset_goals").insert(rows);
 }
 
+export async function syncBankAccounts(householdId: string, accounts: BankAccount[]) {
+  await supabase.from("bank_accounts").delete().eq("household_id", householdId);
+  if (accounts.length === 0) return;
+  const rows = accounts.map((a, i) => ({
+    id: a.id, household_id: householdId, name: a.name, bank: a.bank,
+    balance: a.balance, type: a.type, owner: a.owner ?? "self",
+    color: a.color ?? "#4ECDC4", sort_order: i,
+  }));
+  await supabase.from("bank_accounts").insert(rows);
+}
+
 export async function syncMembers(householdId: string, members: MemberConfig) {
   await supabase.from("member_config").upsert({
     household_id: householdId,
@@ -193,7 +214,8 @@ export async function syncKey(
     case "nisa":        return syncNisa(householdId, value as NisaRecord[]);
     case "events":      return syncEvents(householdId, value as LifeEvent[]);
     case "subscriptions": return syncSubscriptions(householdId, value as Subscription[]);
-    case "goals":       return syncGoals(householdId, value as AssetGoal[]);
-    case "members":     return syncMembers(householdId, value as MemberConfig);
+    case "goals":        return syncGoals(householdId, value as AssetGoal[]);
+    case "members":      return syncMembers(householdId, value as MemberConfig);
+    case "bankAccounts": return syncBankAccounts(householdId, value as BankAccount[]);
   }
 }

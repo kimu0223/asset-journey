@@ -80,6 +80,16 @@ export interface AssetGoal {
   color: string;             // カラー（カードの差別化）
 }
 
+export interface BankAccount {
+  id: string;
+  name: string;        // 口座名 例: "Olive 普通"
+  bank: string;        // 銀行名 例: "三井住友銀行"
+  balance: number;
+  type: "普通" | "定期" | "積立" | "その他";
+  owner?: "self" | "partner" | "joint";
+  color?: string;
+}
+
 // ─── Initial Data ─────────────────────────────────────────────────────────────
 
 // 2026年5月時点の実データ
@@ -160,6 +170,14 @@ export const INITIAL_STOCKS: StockHolding[] = [
 
 export const INITIAL_GOALS: AssetGoal[] = [];
 
+export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [
+  { id: "b1", name: "Olive 普通",  bank: "三井住友銀行",      balance: 52139,  type: "普通", owner: "self", color: "#4ECDC4" },
+  { id: "b2", name: "定期預金",    bank: "三井住友銀行",      balance: 90000,  type: "定期", owner: "self", color: "#FFE66D" },
+  { id: "b3", name: "りぽん",      bank: "三井住友銀行",      balance: 10000,  type: "積立", owner: "self", color: "#A8E6CF" },
+  { id: "b4", name: "普通預金",    bank: "SMBC(豊洲支店)",    balance: 68514,  type: "普通", owner: "self", color: "#DDA0DD" },
+  { id: "b5", name: "代表口座",    bank: "住信SBIネット銀行", balance: 111173, type: "普通", owner: "self", color: "#96CEB4" },
+];
+
 // ─── Chart Colors ─────────────────────────────────────────────────────────────
 export const CHART_COLORS = ["#FF6B6B", "#4ECDC4", "#FFE66D", "#A8E6CF", "#DDA0DD", "#96CEB4"];
 
@@ -192,6 +210,7 @@ export interface AppState {
   members: MemberConfig;
   subscriptions: Subscription[];
   goals: AssetGoal[];
+  bankAccounts: BankAccount[];
 }
 
 export const DEFAULT_MEMBERS: MemberConfig = { selfName: "壮汰", partnerName: "かい" };
@@ -207,6 +226,7 @@ export const loadState = (): AppState => {
     members: DEFAULT_MEMBERS,
     subscriptions: INITIAL_SUBSCRIPTIONS,
     goals: INITIAL_GOALS,
+    bankAccounts: INITIAL_BANK_ACCOUNTS,
   };
   if (typeof window === "undefined") return defaults;
   try {
@@ -222,6 +242,7 @@ export const loadState = (): AppState => {
       members: parsed.members ?? DEFAULT_MEMBERS,
       subscriptions: parsed.subscriptions ?? INITIAL_SUBSCRIPTIONS,
       goals: parsed.goals ?? INITIAL_GOALS,
+      bankAccounts: parsed.bankAccounts ?? INITIAL_BANK_ACCOUNTS,
     };
   } catch {
     return defaults;

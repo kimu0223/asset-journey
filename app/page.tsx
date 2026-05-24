@@ -6,11 +6,12 @@ import {
   AppState,
   INITIAL_ACCOUNTS, INITIAL_MONTHLY, INITIAL_YEARLY, INITIAL_STOCKS,
   INITIAL_NISA, INITIAL_EVENTS, INITIAL_SUBSCRIPTIONS, INITIAL_GOALS,
+  INITIAL_BANK_ACCOUNTS,
   DEFAULT_MEMBERS,
   MonthlyRecord, YearlyRecord, SbiAccount, StockHolding,
-  NisaRecord, LifeEvent, MemberConfig, Subscription, AssetGoal,
+  NisaRecord, LifeEvent, MemberConfig, Subscription, AssetGoal, BankAccount,
 } from "./lib/data";
-import { syncAccounts, syncStocks, syncYearly, syncNisa, syncSubscriptions, syncMembers } from "./lib/supabase/repository";
+import { syncAccounts, syncStocks, syncYearly, syncNisa, syncSubscriptions, syncMembers, syncBankAccounts } from "./lib/supabase/repository";
 import DashboardTab      from "./components/DashboardTab";
 import MonthlyTab        from "./components/MonthlyTab";
 import YearlyTab         from "./components/YearlyTab";
@@ -124,7 +125,7 @@ export default function Page() {
         accounts: INITIAL_ACCOUNTS, stocks: INITIAL_STOCKS,
         nisa: INITIAL_NISA, events: INITIAL_EVENTS,
         members: DEFAULT_MEMBERS, subscriptions: INITIAL_SUBSCRIPTIONS,
-        goals: INITIAL_GOALS,
+        goals: INITIAL_GOALS, bankAccounts: INITIAL_BANK_ACCOUNTS,
       };
 
       // 初回ログイン時: デフォルト実データを Supabase に書き込む
@@ -137,6 +138,7 @@ export default function Page() {
           syncNisa(hid, INITIAL_NISA),
           syncSubscriptions(hid, INITIAL_SUBSCRIPTIONS),
           syncMembers(hid, DEFAULT_MEMBERS),
+          syncBankAccounts(hid, INITIAL_BANK_ACCOUNTS),
         ]);
       }
 
@@ -304,7 +306,7 @@ export default function Page() {
         {tab==="monthly"      && <MonthlyTab      monthly={state.monthly}          setMonthly={update("monthly") as (fn:(prev:MonthlyRecord[])=>MonthlyRecord[])=>void} />}
         {tab==="subscriptions"&& <SubscriptionsTab subscriptions={state.subscriptions} setSubscriptions={update("subscriptions") as (fn:(prev:Subscription[])=>Subscription[])=>void} />}
         {tab==="yearly"       && <YearlyTab       yearly={state.yearly}    setYearly={update("yearly") as (fn:(prev:YearlyRecord[])=>YearlyRecord[])=>void} />}
-        {tab==="accounts"     && <AccountsTab     accounts={state.accounts} setAccounts={update("accounts") as (fn:(prev:SbiAccount[])=>SbiAccount[])=>void} />}
+        {tab==="accounts"     && <AccountsTab     accounts={state.accounts} setAccounts={update("accounts") as (fn:(prev:SbiAccount[])=>SbiAccount[])=>void} bankAccounts={state.bankAccounts ?? []} setBankAccounts={update("bankAccounts") as (fn:(prev:BankAccount[])=>BankAccount[])=>void} />}
         {tab==="stocks"       && <StocksTab       stocks={state.stocks}    setStocks={update("stocks") as (fn:(prev:StockHolding[])=>StockHolding[])=>void} />}
         {tab==="nisa"         && <NisaTab         nisa={state.nisa}        setNisa={update("nisa") as (fn:(prev:NisaRecord[])=>NisaRecord[])=>void} />}
         {tab==="events"       && <LifeEventsTab   events={state.events}    setEvents={update("events") as (fn:(prev:LifeEvent[])=>LifeEvent[])=>void} />}
