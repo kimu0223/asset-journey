@@ -1,34 +1,39 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from "./lib/supabase/client";
+import { fetchAppState, syncKey } from "./lib/supabase/repository";
 import {
-  AppState, loadState, saveState,
-  MonthlyRecord, YearlyRecord, SbiAccount, StockHolding, NisaRecord, LifeEvent, MemberConfig, Subscription, AssetGoal,
+  AppState,
+  INITIAL_ACCOUNTS, INITIAL_MONTHLY, INITIAL_YEARLY, INITIAL_STOCKS,
+  INITIAL_NISA, INITIAL_EVENTS, INITIAL_SUBSCRIPTIONS, INITIAL_GOALS,
+  DEFAULT_MEMBERS,
+  MonthlyRecord, YearlyRecord, SbiAccount, StockHolding,
+  NisaRecord, LifeEvent, MemberConfig, Subscription, AssetGoal,
 } from "./lib/data";
-import DashboardTab   from "./components/DashboardTab";
-import MonthlyTab     from "./components/MonthlyTab";
-import YearlyTab      from "./components/YearlyTab";
-import AccountsTab    from "./components/AccountsTab";
-import StocksTab      from "./components/StocksTab";
-import NisaTab        from "./components/NisaTab";
-import LifeEventsTab      from "./components/LifeEventsTab";
-import RealEstateTab      from "./components/RealEstateTab";
-import SubscriptionsTab   from "./components/SubscriptionsTab";
+import { syncAccounts, syncStocks, syncYearly, syncNisa, syncSubscriptions, syncMembers } from "./lib/supabase/repository";
+import DashboardTab      from "./components/DashboardTab";
+import MonthlyTab        from "./components/MonthlyTab";
+import YearlyTab         from "./components/YearlyTab";
+import AccountsTab       from "./components/AccountsTab";
+import StocksTab         from "./components/StocksTab";
+import NisaTab           from "./components/NisaTab";
+import LifeEventsTab     from "./components/LifeEventsTab";
+import RealEstateTab     from "./components/RealEstateTab";
+import SubscriptionsTab  from "./components/SubscriptionsTab";
 import GoalsTab          from "./components/GoalsTab";
-import { Modal, Btn } from "./components/ui";
-
-const APP_PIN = process.env.NEXT_PUBLIC_APP_PIN ?? "asset2024";
+import { Modal, Btn }    from "./components/ui";
 
 const TABS = [
-  { id: "dashboard",   label: "ダッシュボード", icon: "📊" },
-  { id: "monthly",       label: "月次収支",       icon: "📅" },
-  { id: "subscriptions", label: "サブスク管理",   icon: "💳" },
-  { id: "yearly",        label: "年次資産",       icon: "📈" },
-  { id: "goals",         label: "資産目標",       icon: "🎯" },
-  { id: "accounts",    label: "目的別口座",     icon: "🏦" },
-  { id: "stocks",      label: "保有証券",       icon: "💹" },
-  { id: "nisa",        label: "NISA枠管理",     icon: "💰" },
-  { id: "events",      label: "ライフイベント", icon: "🗓️" },
-  { id: "realestate",  label: "不動産シミュ",   icon: "🏠" },
+  { id: "dashboard",    label: "ダッシュボード", icon: "📊" },
+  { id: "monthly",      label: "月次収支",       icon: "📅" },
+  { id: "subscriptions",label: "サブスク管理",   icon: "💳" },
+  { id: "yearly",       label: "年次資産",       icon: "📈" },
+  { id: "goals",        label: "資産目標",       icon: "🎯" },
+  { id: "accounts",     label: "目的別口座",     icon: "🏦" },
+  { id: "stocks",       label: "保有証券",       icon: "💹" },
+  { id: "nisa",         label: "NISA枠管理",     icon: "💰" },
+  { id: "events",       label: "ライフイベント", icon: "🗓️" },
+  { id: "realestate",   label: "不動産シミュ",   icon: "🏠" },
 ];
 
 function exportState(state: AppState) {
@@ -72,10 +77,7 @@ async function exportPdf(elementId: string, filename: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { jsPDF } = (await import("jspdf")) as any;
   const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: "#080b12",
-    logging: false,
+    scale: 2, useCORS: true, backgroundColor: "#080b12", logging: false,
   });
   const imgData = canvas.toDataURL("image/png");
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -93,113 +95,95 @@ async function exportPdf(elementId: string, filename: string) {
 }
 
 export default function Page() {
-  const [tab, setTab]           = useState("dashboard");
-  const [authed, setAuthed]     = useState<boolean | null>(null);
-  const [pin, setPin]           = useState("");
-  const [pinError, setPinError] = useState("");
-  const [state, setState]       = useState<AppState | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [saved, setSaved]       = useState(false);
+  const [tab, setTab]             = useState("dashboard");
+  const [state, setState]         = useState<AppState | null>(null);
+  const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [menuOpen, setMenuOpen]   = useState(false);
+  const [saved, setSaved]         = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const prevStateRef = useRef<AppState | null>(null);
+  const syncingRef   = useRef(false);
 
+  // ── 初期ロード ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (sessionStorage.getItem("asset-journey-auth") === "1") {
-      setAuthed(true);
-    } else {
-      setAuthed(false);
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      const { data: profile } = await supabase
+        .from("profiles").select("household_id").eq("id", user.id).single();
+      const hid = profile?.household_id as string | null;
+      if (!hid) { setLoading(false); return; }
+
+      setHouseholdId(hid);
+      const remote = await fetchAppState(hid);
+
+      const defaults: AppState = {
+        monthly: INITIAL_MONTHLY, yearly: INITIAL_YEARLY,
+        accounts: INITIAL_ACCOUNTS, stocks: INITIAL_STOCKS,
+        nisa: INITIAL_NISA, events: INITIAL_EVENTS,
+        members: DEFAULT_MEMBERS, subscriptions: INITIAL_SUBSCRIPTIONS,
+        goals: INITIAL_GOALS,
+      };
+
+      // 初回ログイン時: デフォルト実データを Supabase に書き込む
+      const isFirstLogin = !remote.accounts || remote.accounts.length === 0;
+      if (isFirstLogin) {
+        await Promise.all([
+          syncAccounts(hid, INITIAL_ACCOUNTS),
+          syncStocks(hid, INITIAL_STOCKS),
+          syncYearly(hid, INITIAL_YEARLY),
+          syncNisa(hid, INITIAL_NISA),
+          syncSubscriptions(hid, INITIAL_SUBSCRIPTIONS),
+          syncMembers(hid, DEFAULT_MEMBERS),
+        ]);
+      }
+
+      const merged: AppState = { ...defaults, ...remote };
+      prevStateRef.current = merged;
+      setState(merged);
+      setLoading(false);
     }
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+      if (event === "SIGNED_OUT") window.location.href = "/login";
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { setState(loadState()); }, []);
-
+  // ── 状態変化 → Supabase 同期 ───────────────────────────────────────────────
   useEffect(() => {
-    if (!state) return;
-    saveState(state);
-    setSaved(true);
-    const t = setTimeout(() => setSaved(false), 1200);
-    return () => clearTimeout(t);
-  }, [state]);
+    if (!state || !householdId || !prevStateRef.current || syncingRef.current) return;
+    const prev = prevStateRef.current;
+    if (prev === state) return;
+
+    syncingRef.current = true;
+    const promises: Promise<unknown>[] = [];
+    (Object.keys(state) as (keyof AppState)[]).forEach(key => {
+      if (state[key] !== prev[key]) {
+        promises.push(syncKey(key, householdId, state[key]));
+      }
+    });
+    Promise.all(promises)
+      .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1200); })
+      .catch(console.error)
+      .finally(() => { syncingRef.current = false; });
+
+    prevStateRef.current = state;
+  }, [state, householdId]);
 
   const update = useCallback(<K extends keyof AppState>(key: K) =>
     (fn: (prev: AppState[K]) => AppState[K]) => {
       setState(prev => { if (!prev) return prev; return { ...prev, [key]: fn(prev[key]) }; });
     }, []);
 
-  const handlePinSubmit = () => {
-    if (pin === APP_PIN) {
-      sessionStorage.setItem("asset-journey-auth", "1");
-      setAuthed(true);
-      setPinError("");
-    } else {
-      setPinError("パスワードが違います");
-      setPin("");
-    }
-  };
-
-  if (authed === null) return null;
-  if (!authed) {
+  // ── ローディング ──────────────────────────────────────────────────────────
+  if (loading || !state) {
     return (
-      <div style={{
-        minHeight: "100vh", background: "#080b12",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
-      }}>
-        <div style={{
-          background: "#0e1118",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 16, padding: 40,
-          maxWidth: 380, width: "100%",
-          textAlign: "center",
-        }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12,
-            background: "linear-gradient(135deg,#FF6B6B,#FFE66D)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, margin: "0 auto 16px",
-          }}>💹</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'Noto Serif JP', serif", marginBottom: 6 }}>
-            Asset Journey
-          </div>
-          <div style={{ fontSize: 12, color: "#888", marginBottom: 28 }}>家族の資産ダッシュボード</div>
-          <input
-            type="password"
-            value={pin}
-            onChange={e => { setPin(e.target.value); setPinError(""); }}
-            onKeyDown={e => e.key === "Enter" && handlePinSubmit()}
-            placeholder="パスワードを入力"
-            autoFocus
-            style={{
-              width: "100%", padding: "12px 14px",
-              background: "rgba(255,255,255,0.05)",
-              border: `1px solid ${pinError ? "#FF6B6B" : "rgba(255,255,255,0.1)"}`,
-              borderRadius: 8, color: "#fff", fontSize: 14,
-              boxSizing: "border-box", outline: "none",
-              fontFamily: "monospace", marginBottom: 12,
-            }}
-          />
-          {pinError && (
-            <div style={{ fontSize: 12, color: "#FF6B6B", marginBottom: 12 }}>{pinError}</div>
-          )}
-          <button
-            onClick={handlePinSubmit}
-            style={{
-              width: "100%", padding: "12px",
-              background: "#FF6B6B", border: "none",
-              borderRadius: 8, color: "#fff",
-              fontWeight: 700, fontSize: 14,
-              cursor: "pointer", fontFamily: "'Noto Sans JP', sans-serif",
-            }}
-          >
-            ログイン
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!state) {
-    return (
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#555" }}>
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#555",background:"#080b12" }}>
         <div style={{ textAlign:"center" }}>
           <div style={{ fontSize:32,marginBottom:12 }}>💹</div>
           <div style={{ fontFamily:"monospace",fontSize:13 }}>Loading...</div>
@@ -243,8 +227,19 @@ export default function Page() {
             ⬇ エクスポート
           </button>
           <div style={{ fontSize:10,color:saved?"#4ECDC4":"#555",fontFamily:"monospace",transition:"color 0.3s" }}>
-            {saved ? "✓ 保存" : "自動保存"}
+            {saved ? "✓ 保存" : "同期中"}
           </div>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{
+              background:"none", border:"1px solid rgba(255,255,255,0.1)",
+              color:"#666", fontSize:11, borderRadius:6,
+              padding:"5px 10px", cursor:"pointer",
+              fontFamily:"'Noto Sans JP',sans-serif",
+            }}
+          >
+            ログアウト
+          </button>
           <button className="hamburger" onClick={() => setMenuOpen(p=>!p)}
             style={{ background:"none",border:"none",color:"#888",fontSize:20,cursor:"pointer",padding:4 }}>
             {menuOpen ? "✕" : "☰"}
@@ -286,6 +281,17 @@ export default function Page() {
               <span style={{ marginRight:12,fontSize:18 }}>{t.icon}</span>{t.label}
             </button>
           ))}
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{
+              padding:"16px 28px", border:"none", background:"none",
+              color:"#555", fontSize:14, cursor:"pointer", textAlign:"left",
+              borderLeft:"3px solid transparent", fontFamily:"'Noto Sans JP',sans-serif",
+              marginTop:"auto",
+            }}
+          >
+            ログアウト
+          </button>
         </div>
       )}
 
@@ -294,16 +300,16 @@ export default function Page() {
           {activeTab.icon} {activeTab.label}
         </div>
 
-        {tab==="dashboard"  && <DashboardTab  monthly={state.monthly} yearly={state.yearly} accounts={state.accounts} stocks={state.stocks} members={state.members} />}
-        {tab==="monthly"        && <MonthlyTab       monthly={state.monthly}          setMonthly={update("monthly") as (fn:(prev:MonthlyRecord[])=>MonthlyRecord[])=>void} />}
-        {tab==="subscriptions"  && <SubscriptionsTab subscriptions={state.subscriptions} setSubscriptions={update("subscriptions") as (fn:(prev:Subscription[])=>Subscription[])=>void} />}
-        {tab==="yearly"     && <YearlyTab     yearly={state.yearly}    setYearly={update("yearly") as (fn:(prev:YearlyRecord[])=>YearlyRecord[])=>void} />}
-        {tab==="accounts"   && <AccountsTab   accounts={state.accounts} setAccounts={update("accounts") as (fn:(prev:SbiAccount[])=>SbiAccount[])=>void} />}
-        {tab==="stocks"     && <StocksTab     stocks={state.stocks}    setStocks={update("stocks") as (fn:(prev:StockHolding[])=>StockHolding[])=>void} />}
-        {tab==="nisa"       && <NisaTab       nisa={state.nisa}        setNisa={update("nisa") as (fn:(prev:NisaRecord[])=>NisaRecord[])=>void} />}
-        {tab==="events"     && <LifeEventsTab events={state.events}   setEvents={update("events") as (fn:(prev:LifeEvent[])=>LifeEvent[])=>void} />}
-        {tab==="realestate" && <RealEstateTab yearly={state.yearly} />}
-        {tab==="goals"      && <GoalsTab goals={state.goals} setGoals={update("goals") as (fn:(prev:AssetGoal[])=>AssetGoal[])=>void} />}
+        {tab==="dashboard"    && <DashboardTab    monthly={state.monthly} yearly={state.yearly} accounts={state.accounts} stocks={state.stocks} members={state.members} />}
+        {tab==="monthly"      && <MonthlyTab      monthly={state.monthly}          setMonthly={update("monthly") as (fn:(prev:MonthlyRecord[])=>MonthlyRecord[])=>void} />}
+        {tab==="subscriptions"&& <SubscriptionsTab subscriptions={state.subscriptions} setSubscriptions={update("subscriptions") as (fn:(prev:Subscription[])=>Subscription[])=>void} />}
+        {tab==="yearly"       && <YearlyTab       yearly={state.yearly}    setYearly={update("yearly") as (fn:(prev:YearlyRecord[])=>YearlyRecord[])=>void} />}
+        {tab==="accounts"     && <AccountsTab     accounts={state.accounts} setAccounts={update("accounts") as (fn:(prev:SbiAccount[])=>SbiAccount[])=>void} />}
+        {tab==="stocks"       && <StocksTab       stocks={state.stocks}    setStocks={update("stocks") as (fn:(prev:StockHolding[])=>StockHolding[])=>void} />}
+        {tab==="nisa"         && <NisaTab         nisa={state.nisa}        setNisa={update("nisa") as (fn:(prev:NisaRecord[])=>NisaRecord[])=>void} />}
+        {tab==="events"       && <LifeEventsTab   events={state.events}    setEvents={update("events") as (fn:(prev:LifeEvent[])=>LifeEvent[])=>void} />}
+        {tab==="realestate"   && <RealEstateTab   yearly={state.yearly} />}
+        {tab==="goals"        && <GoalsTab        goals={state.goals}      setGoals={update("goals") as (fn:(prev:AssetGoal[])=>AssetGoal[])=>void} />}
       </main>
 
       <nav className="bottom-nav" style={{ overflowX:"auto" }}>
@@ -328,36 +334,23 @@ export default function Page() {
             保存先はブラウザのダウンロードフォルダです。
           </p>
           <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
-            <Btn
-              variant="ghost"
-              onClick={() => { exportState(state); setShowExport(false); }}
-              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
-            >
+            <Btn variant="ghost" onClick={() => { exportState(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}>
               📋 JSON完全バックアップ
             </Btn>
-            <Btn
-              variant="ghost"
-              onClick={() => { exportMonthlyCsv(state); setShowExport(false); }}
-              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
-            >
+            <Btn variant="ghost" onClick={() => { exportMonthlyCsv(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}>
               📊 月次収支 CSV
             </Btn>
-            <Btn
-              variant="ghost"
-              onClick={() => { exportYearlyCsv(state); setShowExport(false); }}
-              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
-            >
+            <Btn variant="ghost" onClick={() => { exportYearlyCsv(state); setShowExport(false); }}
+              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}>
               📈 年次資産 CSV
             </Btn>
-            <Btn
-              variant="ghost"
-              onClick={async () => {
-                setShowExport(false);
-                await new Promise(r => setTimeout(r, 100));
-                await exportPdf("pdf-main", `asset-journey-${new Date().toISOString().slice(0, 10)}.pdf`);
-              }}
-              style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}
-            >
+            <Btn variant="ghost" onClick={async () => {
+              setShowExport(false);
+              await new Promise(r => setTimeout(r, 100));
+              await exportPdf("pdf-main", `asset-journey-${new Date().toISOString().slice(0, 10)}.pdf`);
+            }} style={{ width:"100%",textAlign:"left",justifyContent:"flex-start" }}>
               📄 PDF ダウンロード（現在の画面）
             </Btn>
           </div>
