@@ -140,6 +140,10 @@ export default function Page() {
           syncMembers(hid, DEFAULT_MEMBERS),
           syncBankAccounts(hid, INITIAL_BANK_ACCOUNTS),
         ]);
+        prevStateRef.current = defaults;
+        setState(defaults);
+        setLoading(false);
+        return;
       }
 
       const merged: AppState = { ...defaults, ...remote };

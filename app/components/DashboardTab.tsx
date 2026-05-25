@@ -16,7 +16,7 @@ interface Props {
 
 export default function DashboardTab({ monthly, yearly, accounts, stocks, members }: Props) {
   const latest = monthly[monthly.length - 1];
-  const latestYear = yearly[yearly.length - 1];
+  const latestYear = yearly[yearly.length - 1] ?? { cash: 0, nisa: 0, stock: 0, trust: 0, nisaGain: 0, stockGain: 0 };
   const prevYear = yearly[yearly.length - 2] ?? { cash: 0, nisa: 0, stock: 0, trust: 0, nisaGain: 0, stockGain: 0 };
 
   const totalInvested = latestYear.cash + latestYear.nisa + latestYear.stock + latestYear.trust;
