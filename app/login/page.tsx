@@ -13,9 +13,10 @@ export default function LoginPage() {
     if (!email) return;
     setLoading(true);
     setError("");
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? location.origin;
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${siteUrl}/auth/callback` },
     });
     if (error) {
       setError(error.message);
@@ -48,12 +49,26 @@ export default function LoginPage() {
         {sent ? (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>📧</div>
-            <p style={{ color: "#4ECDC4", fontWeight: 600, marginBottom: 8 }}>
-              メールを送信しました
+            <p style={{ color: "#4ECDC4", fontWeight: 600, marginBottom: 12 }}>
+              ログインリンクを送信しました
             </p>
-            <p style={{ color: "#9ca3af", fontSize: 13 }}>
-              {email} に届いたリンクをクリックしてログインしてください
+            <p style={{ color: "#d1d5db", fontSize: 14, marginBottom: 16 }}>
+              <strong>{email}</strong> 宛に「Asset Journey ログインリンク」という件名のメールをお送りしました。
             </p>
+            <div style={{
+              background: "#1f2937", borderRadius: 8, padding: "14px 16px",
+              textAlign: "left",
+            }}>
+              <p style={{ color: "#9ca3af", fontSize: 13, margin: "0 0 8px" }}>
+                ✉ メール内の「ログイン」ボタンまたはリンクをクリックしてください
+              </p>
+              <p style={{ color: "#9ca3af", fontSize: 13, margin: "0 0 8px" }}>
+                ⚠ 迷惑メールフォルダも確認してください
+              </p>
+              <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
+                ⏱ リンクの有効期限は1時間です
+              </p>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
